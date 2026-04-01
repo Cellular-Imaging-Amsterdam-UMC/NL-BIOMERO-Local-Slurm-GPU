@@ -60,6 +60,7 @@ services:
     command: ["slurmd"]
     hostname: c1
     container_name: c1
+    privileged: true
     runtime: nvidia
     environment:
       NVIDIA_VISIBLE_DEVICES: all
@@ -90,6 +91,7 @@ services:
     command: ["slurmd"]
     hostname: c2
     container_name: c2
+    privileged: true
     runtime: nvidia
     environment:
       NVIDIA_VISIBLE_DEVICES: all
