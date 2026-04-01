@@ -54,6 +54,20 @@ then
     echo "---> Starting the MUNGE Authentication service (munged) ..."
     gosu munge /usr/sbin/munged
 
+    # Configure Apptainer for WSL2 GPU support:
+    # On WSL2, the standard libcuda.so from the CUDA base image does not work
+    # (it needs /dev/nvidia0 which doesn't exist). Override it with the WSL2-
+    # compatible libcuda.so that uses /dev/dxg instead.
+    # We add a bind path in apptainer.conf so it applies to ALL Singularity
+    # runs, even when BIOMERO regenerates job scripts.
+    WSL2_LIBCUDA="/usr/lib/wsl/drivers/nvwuwi.inf_amd64_5769f438b1032043/libcuda.so.1"
+    APPTAINER_CONF="/etc/apptainer/apptainer.conf"
+    BIND_ENTRY="bind path = ${WSL2_LIBCUDA}:/usr/lib/x86_64-linux-gnu/libcuda.so.1"
+    if [ -f "$WSL2_LIBCUDA" ] && [ -f "$APPTAINER_CONF" ] && ! grep -q "$WSL2_LIBCUDA" "$APPTAINER_CONF"; then
+        echo "---> WSL2 detected, adding libcuda bind path to apptainer.conf ..."
+        sed -i "/^bind path = \/etc\/hosts/a $BIND_ENTRY" "$APPTAINER_CONF"
+    fi
+
     echo "---> Waiting for slurmctld to become active before starting slurmd..."
 
     until 2>/dev/null >/dev/tcp/slurmctld/6817

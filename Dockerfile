@@ -97,6 +97,10 @@ RUN set -x \
 RUN yum install -y epel-release \
     && yum install -y apptainer
 
+# ------- Install NVIDIA Container Toolkit (for Apptainer --nv via nvccli) -------
+RUN dnf install -y nvidia-container-toolkit \
+    && sed -i 's/use nvidia-container-cli = no/use nvidia-container-cli = yes/' /etc/apptainer/apptainer.conf
+
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
