@@ -1,6 +1,6 @@
 FROM nvidia/cuda:12.0.0-base-rockylinux9
 
-LABEL org.opencontainers.image.source="https://github.com/TorecLuik/slurm-docker-cluster" \
+LABEL org.opencontainers.image.source="https://github.com/Cellular-Imaging-Amsterdam-UMC/NL-BIOMERO-Local-Slurm-GPU" \
       org.opencontainers.image.title="slurm-docker-cluster-gpu" \
       org.opencontainers.image.description="Slurm Docker cluster with GPU support on Rocky Linux 9" \
       org.label-schema.docker.cmd="docker-compose up -d" \
