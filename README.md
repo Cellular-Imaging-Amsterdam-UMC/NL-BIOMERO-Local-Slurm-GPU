@@ -117,6 +117,22 @@ Verify GPU allocation:
     squeue -o "%i %j %b" # shows GRES allocated per job
 
 
+### WSL2 GPU Support (Docker Desktop on Windows)
+
+This cluster works on Docker Desktop with WSL2 backend. The following adaptations
+are applied automatically:
+
+- **`/dev/dxg` instead of `/dev/nvidia0`**: WSL2 exposes the GPU via `/dev/dxg`.
+  This is configured in `gres.conf`.
+- **`nvidia-container-toolkit` + `nvccli`**: Installed in the image and enabled in
+  `apptainer.conf` so that `singularity run --nv` properly sets up GPU devices.
+- **WSL2 `libcuda.so` override**: The standard `libcuda.so` from the CUDA base image
+  requires `/dev/nvidia0` (which doesn't exist on WSL2). At worker startup,
+  `docker-entrypoint.sh` detects WSL2 and adds a bind path in `apptainer.conf` to
+  overlay the WSL2-compatible `libcuda.so` (which uses `/dev/dxg` via `libdxcore.so`).
+
+No manual steps are needed — just build and run as described in the Quickstart.
+
 We have not added:
 - Multi-GPU-per-node support (edit `gres.conf` and `slurm.conf` if your host has multiple GPUs)
 
@@ -199,7 +215,8 @@ From the shell, execute slurm commands, for example:
 ```console
 [root@slurmctld /]# sinfo
 PARTITION AVAIL  TIMELIMIT  NODES  STATE NODELIST
-normal*      up 5-00:00:00      2   idle c[1-2]
+test*        up   infinite      2   idle c[1-2]
+gpu          up   infinite      2   idle c[1-2]
 ```
 
 ### Submitting Jobs
