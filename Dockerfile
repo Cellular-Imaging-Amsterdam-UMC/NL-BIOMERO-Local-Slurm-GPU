@@ -1,8 +1,8 @@
-FROM rockylinux:9.3
+FROM nvidia/cuda:12.0.0-base-rockylinux9
 
 LABEL org.opencontainers.image.source="https://github.com/TorecLuik/slurm-docker-cluster" \
-      org.opencontainers.image.title="slurm-docker-cluster" \
-      org.opencontainers.image.description="Slurm Docker cluster on Rocky Linux 8" \
+      org.opencontainers.image.title="slurm-docker-cluster-gpu" \
+      org.opencontainers.image.description="Slurm Docker cluster with GPU support on Rocky Linux 9" \
       org.label-schema.docker.cmd="docker-compose up -d" \
       maintainer="Torec Luik"
 
@@ -88,6 +88,7 @@ RUN set -x \
 
 COPY slurm.conf /etc/slurm/slurm.conf
 COPY slurmdbd.conf /etc/slurm/slurmdbd.conf
+COPY gres.conf /etc/slurm/gres.conf
 RUN set -x \
     && chown slurm:slurm /etc/slurm/slurmdbd.conf \
     && chmod 600 /etc/slurm/slurmdbd.conf

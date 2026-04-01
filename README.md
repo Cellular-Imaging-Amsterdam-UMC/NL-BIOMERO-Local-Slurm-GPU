@@ -1,26 +1,45 @@
-# Local Slurm cluster (for BIOMERO)
+# Local Slurm cluster with GPU support (for BIOMERO)
 
-This is a multi-container Slurm cluster using docker-compose.  The compose file
-creates named volumes for persistent storage of MySQL data files as well as
+This is a multi-container Slurm cluster using docker-compose with **NVIDIA GPU passthrough**.
+All worker nodes (c1, c2) share the host GPU(s) via the NVIDIA Container Toolkit.
+The compose file creates named volumes for persistent storage of MySQL data files as well as
 Slurm state and log directories.
+
+## Prerequisites
+
+- Docker Engine with [Docker Compose v2](https://docs.docker.com/compose/install/)
+- NVIDIA GPU driver installed on the host
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) installed on the host
+
+Verify your GPU is visible to Docker:
+
+    docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
 
 ## Quickstart
 
+> **Upgrading from the CPU-only cluster?**  
+> Run `docker-compose down --volumes` first so the new GPU config files
+> take effect in the shared `etc_slurm` volume.
+
 Clone this repository locally
 
-    git clone https://github.com/Cellular-Imaging-Amsterdam-UMC/NL-BIOMERO-Local-Slurm
+    git clone https://github.com/Cellular-Imaging-Amsterdam-UMC/NL-BIOMERO-Local-Slurm-GPU
 
 Change into the new directory
 
-    cd NL-BIOMERO-Local-Slurm
+    cd NL-BIOMERO-Local-Slurm-GPU
 
 Copy your public SSH key into this directory, to allow SSH access
 
     cp ~/.ssh/id_rsa.pub .
 
-Build and run the Slurm cluster containers
+Build and run the GPU-enabled Slurm cluster containers
 
     docker-compose up -d --build
+
+Verify the GPU is visible inside the worker nodes:
+
+    docker exec c1 nvidia-smi
 
 Now you can access Slurm through SSH (from inside a Docker container):
 
@@ -37,7 +56,11 @@ Try forcing ownership and access:
 
     docker exec -it slurmctld bash -c "chown -R slurm:slurm /home/slurm/.ssh && chmod 700 /home/slurm/.ssh && chmod 600 /home/slurm/.ssh/authorized_keys" 
 
-For example, run this command from the `/data` directory:
+Submit a test GPU job from the `/data` directory:
+
+    sbatch -n 1 --gres=gpu:1 --wrap "nvidia-smi > gpu_test.log"
+
+Or a Singularity job:
 
     sbatch -n 1 --wrap "hostname > lolcow.log && singularity run docker://godlovedc/lolcow >> lolcow.log"
 
@@ -78,9 +101,24 @@ This should give a funny cow in lolcow.log and the host farm on which the cow wa
 
 Note: Like always be sure to run Slurm commands from `/data`, the shared folder/volume. Otherwise it won't be able to share the created logfile.
 
+### Submitting GPU Jobs
+
+Request a GPU using `--gres=gpu:1`:
+
+    sbatch -n 1 --gres=gpu:1 --wrap "nvidia-smi > gpu_test.log"
+
+Or target the `gpu` partition explicitly:
+
+    sbatch -p gpu --gres=gpu:1 --wrap "nvidia-smi > gpu_test.log"
+
+Verify GPU allocation:
+
+    sinfo -o "%N %G"   # shows GRES per node
+    squeue -o "%i %j %b" # shows GRES allocated per job
+
 
 We have not added:
-- GPU support
+- Multi-GPU-per-node support (edit `gres.conf` and `slurm.conf` if your host has multiple GPUs)
 
 ## Docker specifics 
 
