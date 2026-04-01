@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.0.0-base-rockylinux9
+FROM nvidia/cuda:12.6.3-base-rockylinux9
 
 LABEL org.opencontainers.image.source="https://github.com/Cellular-Imaging-Amsterdam-UMC/NL-BIOMERO-Local-Slurm-GPU" \
       org.opencontainers.image.title="slurm-docker-cluster-gpu" \

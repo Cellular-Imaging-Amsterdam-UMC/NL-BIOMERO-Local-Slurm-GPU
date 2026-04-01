@@ -59,8 +59,8 @@ services:
         SLURM_TAG: ${SLURM_TAG:-slurm-21-08-6-1}
     command: ["slurmd"]
     hostname: c1
-    privileged: true
     container_name: c1
+    runtime: nvidia
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
@@ -89,8 +89,8 @@ services:
         SLURM_TAG: ${SLURM_TAG:-slurm-21-08-6-1}
     command: ["slurmd"]
     hostname: c2
-    privileged: true
     container_name: c2
+    runtime: nvidia
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
