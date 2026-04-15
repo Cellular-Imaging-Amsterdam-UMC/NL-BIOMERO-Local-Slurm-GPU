@@ -55,15 +55,21 @@ then
     gosu munge /usr/sbin/munged
 
     # Configure Apptainer for WSL2 GPU support:
+    # WSL2 exposes the GPU via /dev/dxg (not /dev/nvidia0).
+    # nvidia-container-cli (nvccli) expects /dev/nvidia0 and fails on WSL2.
+    # Solution: disable nvccli and use legacy --nv mode instead, which just
+    # bind-mounts libraries. We also bind /dev/dxg + /dev/nvidiactl and the
+    # WSL2-compatible libcuda.so.1 so CUDA compute works inside Singularity.
+    # Configure Apptainer for WSL2 GPU support:
     # On WSL2, the standard libcuda.so from the CUDA base image does not work
     # (it needs /dev/nvidia0 which doesn't exist). Override it with the WSL2-
     # compatible libcuda.so that uses /dev/dxg instead.
     # We add a bind path in apptainer.conf so it applies to ALL Singularity
     # runs, even when BIOMERO regenerates job scripts.
-    WSL2_LIBCUDA="/usr/lib/wsl/drivers/nvwuwi.inf_amd64_5769f438b1032043/libcuda.so.1"
+    WSL2_LIBCUDA=$(find /usr/lib/wsl/drivers/ -name "libcuda.so.1" 2>/dev/null | head -1)
     APPTAINER_CONF="/etc/apptainer/apptainer.conf"
     BIND_ENTRY="bind path = ${WSL2_LIBCUDA}:/usr/lib/x86_64-linux-gnu/libcuda.so.1"
-    if [ -f "$WSL2_LIBCUDA" ] && [ -f "$APPTAINER_CONF" ] && ! grep -q "$WSL2_LIBCUDA" "$APPTAINER_CONF"; then
+    if [ -n "$WSL2_LIBCUDA" ] && [ -f "$APPTAINER_CONF" ] && ! grep -q "$WSL2_LIBCUDA" "$APPTAINER_CONF"; then
         echo "---> WSL2 detected, adding libcuda bind path to apptainer.conf ..."
         sed -i "/^bind path = \/etc\/hosts/a $BIND_ENTRY" "$APPTAINER_CONF"
     fi

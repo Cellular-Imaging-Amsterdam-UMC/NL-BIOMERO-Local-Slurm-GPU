@@ -1,7 +1,7 @@
 # Local Slurm cluster with GPU support (for BIOMERO)
 
 This is a multi-container Slurm cluster using docker-compose with **NVIDIA GPU passthrough**.
-All worker nodes (c1, c2) share the host GPU(s) via the NVIDIA Container Toolkit.
+Designed for **Docker Desktop with WSL2** (Windows). One worker node (c1) has GPU access; one (c2) is CPU-only.
 The compose file creates named volumes for persistent storage of MySQL data files as well as
 Slurm state and log directories.
 
@@ -17,10 +17,6 @@ Verify your GPU is visible to Docker:
 
 ## Quickstart
 
-> **Upgrading from the CPU-only cluster?**  
-> Run `docker-compose down --volumes` first so the new GPU config files
-> take effect in the shared `etc_slurm` volume.
-
 Clone this repository locally
 
     git clone https://github.com/Cellular-Imaging-Amsterdam-UMC/NL-BIOMERO-Local-Slurm-GPU
@@ -35,11 +31,11 @@ Copy your public SSH key into this directory, to allow SSH access
 
 Build and run the GPU-enabled Slurm cluster containers
 
-    docker-compose up -d --build
+    docker compose up -d --build
 
 Verify the GPU is visible inside the worker nodes:
 
-    docker exec c1 nvidia-smi
+    docker compose exec c1 nvidia-smi
 
 Now you can access Slurm through SSH (from inside a Docker container):
 
@@ -54,22 +50,13 @@ Done.
 If the SSH is not working, it might be permission related since SSH is quite specific about that. 
 Try forcing ownership and access: 
 
-    docker exec -it slurmctld bash -c "chown -R slurm:slurm /home/slurm/.ssh && chmod 700 /home/slurm/.ssh && chmod 600 /home/slurm/.ssh/authorized_keys" 
+    docker compose exec slurmctld bash -c "chown -R slurm:slurm /home/slurm/.ssh && chmod 700 /home/slurm/.ssh && chmod 600 /home/slurm/.ssh/authorized_keys"
 
-Submit a test GPU job from the `/data` directory:
+Submit a first test job — the classic lolcow:
 
-    sbatch -n 1 --gres=gpu:1 --wrap "nvidia-smi > gpu_test.log"
+    cd /data && sbatch -n 1 --wrap "hostname > lolcow.log && singularity run docker://godlovedc/lolcow >> lolcow.log" && tail --retry -f lolcow.log
 
-Or a Singularity job:
-
-    sbatch -n 1 --wrap "hostname > lolcow.log && singularity run docker://godlovedc/lolcow >> lolcow.log"
-
-This should say "Submitted batch job 1"
-Then let's tail the logfile:
-
-    tail -f lolcow.log
-
-First we see the slurm node that is computing, and later we will see the funny cow.
+First we see the Slurm node that ran the job, then the cow:
 
 ```bash
 [slurm@slurmctld data]$ tail -f lolcow.log
@@ -87,74 +74,82 @@ c1
                 ||     ||
 ```
 
-Exit logs with `CTRL+C`, and the container with `exit`, and enjoy your local Slurm cluster.
+Exit logs with `CTRL+C`. Now test GPU access. First a quick device check:
 
-## New Features
+    cd /data && sbatch -n 1 --gres=gpu:1 --wrap "nvidia-smi > gpu_test.log" && tail --retry -f gpu_test.log
 
-We added the following features to this (forked) cluster:
-- Running SSH on the SlurmCTLD, you can connect to it at `host.docker.internal:2222`
-- Running Singularity, you can fire off any singularity container now, e.g.:
+Exit logs with `CTRL+C`. Then a real GPU compute test using PyTorch — this proves CUDA actually works, not just device
+visibility. Note: the first run downloads the PyTorch container (~3 GB), subsequent runs use
+the cache and start immediately.
 
-    `sbatch -n 1 --wrap "hostname > lolcow.log && singularity run docker://godlovedc/lolcow >> lolcow.log"`
+    cd /data && sbatch -p gpu --gres=gpu:1 -o /data/gpu-test.log --wrap 'singularity exec --nv docker://pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime python3 -c "import torch; x=torch.randn(8000,8000).cuda(); y=torch.randn(8000,8000).cuda(); [torch.mm(x,y) for _ in range(100)]; torch.cuda.synchronize(); print(torch.cuda.get_device_name(0), round(torch.cuda.memory_allocated()/1e9,2), \"GB - Done\")"'
 
-This should give a funny cow in lolcow.log and the host farm on which the cow was grazing.
+    tail --retry -f /data/gpu-test.log
 
-Note: Like always be sure to run Slurm commands from `/data`, the shared folder/volume. Otherwise it won't be able to share the created logfile.
+Exit logs with `CTRL+C`, and the container with `exit`. Enjoy your local Slurm cluster.
 
-### Submitting GPU Jobs
+## Features
 
-Request a GPU using `--gres=gpu:1`:
+- SSH on the SlurmCTLD at `host.docker.internal:2222`
+- Singularity/Apptainer for running any container image as a Slurm job
+- GPU passthrough via NVIDIA Container Toolkit (`--nv` flag)
+- Persistent image cache at `/data/.apptainer_cache` — images survive cluster restarts
 
-    sbatch -n 1 --gres=gpu:1 --wrap "nvidia-smi > gpu_test.log"
+> **Note:** Run Slurm commands from `/data` (the shared volume) so job output files are
+> accessible from all nodes and the controller.
 
-Or target the `gpu` partition explicitly:
+### GPU Jobs
+
+Request a GPU with `--gres=gpu:1`. Use `-p gpu` to target the dedicated GPU partition (c1 only):
 
     sbatch -p gpu --gres=gpu:1 --wrap "nvidia-smi > gpu_test.log"
 
-Verify GPU allocation:
+Verify GPU scheduling:
 
-    sinfo -o "%N %G"   # shows GRES per node
-    squeue -o "%i %j %b" # shows GRES allocated per job
+    sinfo -o "%N %G"        # shows GRES per node
+    squeue -o "%i %j %b"    # shows GRES allocated per running job
 
+#### GPU assignment
+
+This cluster mirrors a typical HPC setup: **c1 is the GPU node, c2 is CPU-only**.
+
+| Node | GPU | Partitions |
+|------|-----|-----------|
+| c1   | ✅ 1× GPU (`gpu:1`) | `normal`, `gpu` |
+| c2   | ❌ CPU only | `normal` |
+
+GPU jobs land exclusively on c1. CPU jobs run on either node via the default `normal` partition.
+This reflects reality on a single-GPU host — Slurm will never schedule two concurrent GPU jobs.
 
 ### WSL2 GPU Support (Docker Desktop on Windows)
 
-This cluster works on Docker Desktop with WSL2 backend. The following adaptations
-are applied automatically:
+This cluster works on Docker Desktop with WSL2 backend. The following adaptations are applied
+automatically at worker startup — no manual steps needed:
 
-- **`/dev/dxg` instead of `/dev/nvidia0`**: WSL2 exposes the GPU via `/dev/dxg`.
-  This is configured in `gres.conf`.
-- **`nvidia-container-toolkit` + `nvccli`**: Installed in the image and enabled in
-  `apptainer.conf` so that `singularity run --nv` properly sets up GPU devices.
-- **WSL2 `libcuda.so` override**: The standard `libcuda.so` from the CUDA base image
-  requires `/dev/nvidia0` (which doesn't exist on WSL2). At worker startup,
-  `docker-entrypoint.sh` detects WSL2 and adds a bind path in `apptainer.conf` to
-  overlay the WSL2-compatible `libcuda.so` (which uses `/dev/dxg` via `libdxcore.so`).
-
-No manual steps are needed — just build and run as described in the Quickstart.
-
-We have not added:
-- Multi-GPU-per-node support (edit `gres.conf` and `slurm.conf` if your host has multiple GPUs)
+- **`/dev/dxg`**: WSL2 exposes the GPU via `/dev/dxg` instead of `/dev/nvidia0`. Configured in `gres.conf`.
+- **WSL2 `libcuda.so` override**: `docker-entrypoint.sh` dynamically finds the WSL2-compatible
+  `libcuda.so.1` under `/usr/lib/wsl/drivers/` (folder name changes with each driver update) and
+  binds it into all Singularity containers via `apptainer.conf`.
 
 ## Docker specifics 
 
 To stop the cluster:
 
-    docker-compose down
+    docker compose down
 
 N.B. Data is stored on Docker volumes, which are not automatically deleted when you down the setup. Convenient.
 
 To remove volumes as well:
 
-    docker-compose down --volumes
+    docker compose down --volumes
 
 To rebuild a single container (while running your cluster):
 
-    docker-compose up -d --build <name>
+    docker compose up -d --build <name>
 
 To attach to a running container:
 
-    docker-compose exec <name> /bin/bash
+    docker compose exec <name> /bin/bash
 
 Where `<name>` is e.g. `slurmctld` or `c1`
 
@@ -162,7 +157,7 @@ Exit back to your commandline by typing `exit`.
 
 Or check the logs
 
-    docker-compose logs -f 
+    docker compose logs -f 
 
 Exit with CTRL+C (only exits the logs, does not shut down the container)
 
@@ -176,13 +171,15 @@ The compose file will run the following containers:
 * c1 (slurmd)
 * c2 (slurmd)
 
-The compose file will create the following named volumes:
+The compose file will create the following named volumes (prefixed with `gpu_` to avoid
+clashing with the CPU-only cluster's volumes):
 
-* etc_munge         ( -> /etc/munge     )
-* etc_slurm         ( -> /etc/slurm     )
-* slurm_jobdir      ( -> /data          )
-* var_lib_mysql     ( -> /var/lib/mysql )
-* var_log_slurm     ( -> /var/log/slurm )
+* gpu_etc_munge         ( -> /etc/munge     )
+* gpu_etc_slurm         ( -> /etc/slurm     )
+* gpu_slurm_jobdir      ( -> /data          )
+* gpu_var_lib_mysql     ( -> /var/lib/mysql )
+* gpu_var_log_slurm     ( -> /var/log/slurm )
+* gpu_home_cache        ( -> /home/slurm    )
 
 ## Slurm specifics
 
@@ -215,8 +212,8 @@ From the shell, execute slurm commands, for example:
 ```console
 [root@slurmctld /]# sinfo
 PARTITION AVAIL  TIMELIMIT  NODES  STATE NODELIST
-test*        up   infinite      2   idle c[1-2]
-gpu          up   infinite      2   idle c[1-2]
+normal*      up   infinite      2   idle c[1-2]
+gpu          up   infinite      1   idle c1
 ```
 
 ### Submitting Jobs
@@ -232,3 +229,21 @@ Submitted batch job 2
 [root@slurmctld data]# ls
 slurm-2.out
 ```
+
+## Running on Native Linux
+
+This repo is configured for **WSL2 by default** due to `gres.conf` using `/dev/dxg` (the WSL2 GPU device).
+To run on a native Linux host with a standard NVIDIA driver, at least two things need to change:
+
+1. **`gres.conf`** — replace the WSL2 device with the standard NVIDIA device:
+
+   ```diff
+   - NodeName=c1 Name=gpu File=/dev/dxg Count=1
+   + NodeName=c1 Name=gpu File=/dev/nvidia0 Count=1
+   ```
+
+   If you have multiple GPUs, list them as `File=/dev/nvidia0,/dev/nvidia1,...` and update `Count` accordingly.
+
+2. **`docker-compose.yml`** — verify the worker nodes have GPU access. The `deploy.resources.reservations.devices` block (NVIDIA Container Toolkit) should already work on native Linux without changes.
+
+No equivalent entrypoint changes are needed on Linux. The WSL2 block in `docker-entrypoint.sh` exists because WSL2 has no `/dev/nvidia0`, which causes `nvidia-container-cli` to fail silently — so it gets disabled and libcuda is injected manually. On native Linux, `/dev/nvidia0` exists, `nvidia-container-cli` works, and Apptainer handles CUDA library injection automatically via the standard path. The WSL2 block is conditional (only fires when `/usr/lib/wsl/drivers/` exists) and will not run on Linux.
