@@ -83,10 +83,33 @@ services:
   c2:
     build:
       context: .
+      dockerfile: Dockerfile_cpu
       args:
         SLURM_TAG: ${SLURM_TAG:-slurm-21-08-6-1}
     command: ["slurmd"]
     hostname: c2
+    privileged: true
+    environment:
+      APPTAINER_CACHEDIR: /data/.apptainer_cache
+    volumes:
+      - gpu_etc_munge:/etc/munge
+      - gpu_etc_slurm:/etc/slurm
+      - gpu_slurm_jobdir:/data
+      - gpu_var_log_slurm:/var/log/slurm
+      - gpu_home_cache:/home/slurm
+    expose:
+      - "6818"
+    depends_on:
+      - "slurmctld"
+
+  c3:
+    build:
+      context: .
+      dockerfile: Dockerfile_cpu
+      args:
+        SLURM_TAG: ${SLURM_TAG:-slurm-21-08-6-1}
+    command: ["slurmd"]
+    hostname: c3
     privileged: true
     environment:
       APPTAINER_CACHEDIR: /data/.apptainer_cache
