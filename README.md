@@ -1,7 +1,7 @@
 # Local Slurm cluster with GPU support (for BIOMERO)
 
 This is a multi-container Slurm cluster using docker-compose with **NVIDIA GPU passthrough**.
-Designed for **Docker Desktop with WSL2** (Windows). One worker node (c1) has GPU access; one (c2) is CPU-only.
+Designed for **Docker Desktop with WSL2** (Windows). One worker node (c1) has GPU access; two (c2, c3) are CPU-only.
 The compose file creates named volumes for persistent storage of MySQL data files as well as
 Slurm state and log directories.
 
@@ -111,14 +111,15 @@ Verify GPU scheduling:
 
 #### GPU assignment
 
-This cluster mirrors a typical HPC setup: **c1 is the GPU node, c2 is CPU-only**.
+This cluster mirrors a typical HPC setup: **c1 is the GPU node, c2 and c3 are CPU-only**.
 
 | Node | GPU | Partitions |
 |------|-----|-----------|
 | c1   | ✅ 1× GPU (`gpu:1`) | `normal`, `gpu` |
 | c2   | ❌ CPU only | `normal` |
+| c3   | ❌ CPU only | `normal` |
 
-GPU jobs land exclusively on c1. CPU jobs run on either node via the default `normal` partition.
+GPU jobs land exclusively on c1. CPU jobs run on any node via the default `normal` partition.
 This reflects reality on a single-GPU host — Slurm will never schedule two concurrent GPU jobs.
 
 ### WSL2 GPU Support (Docker Desktop on Windows)
@@ -168,8 +169,9 @@ The compose file will run the following containers:
 * mysql
 * slurmdbd
 * slurmctld
-* c1 (slurmd)
-* c2 (slurmd)
+* c1 (slurmd, GPU)
+* c2 (slurmd, CPU only)
+* c3 (slurmd, CPU only)
 
 The compose file will create the following named volumes (prefixed with `gpu_` to avoid
 clashing with the CPU-only cluster's volumes):
@@ -212,7 +214,7 @@ From the shell, execute slurm commands, for example:
 ```console
 [root@slurmctld /]# sinfo
 PARTITION AVAIL  TIMELIMIT  NODES  STATE NODELIST
-normal*      up   infinite      2   idle c[1-2]
+normal*      up   infinite      3   idle c[1-3]
 gpu          up   infinite      1   idle c1
 ```
 
