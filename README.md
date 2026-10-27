@@ -249,3 +249,15 @@ To run on a native Linux host with a standard NVIDIA driver, at least two things
 2. **`docker-compose.yml`** — verify the worker nodes have GPU access. The `deploy.resources.reservations.devices` block (NVIDIA Container Toolkit) should already work on native Linux without changes.
 
 No equivalent entrypoint changes are needed on Linux. The WSL2 block in `docker-entrypoint.sh` exists because WSL2 has no `/dev/nvidia0`, which causes `nvidia-container-cli` to fail silently — so it gets disabled and libcuda is injected manually. On native Linux, `/dev/nvidia0` exists, `nvidia-container-cli` works, and Apptainer handles CUDA library injection automatically via the standard path. The WSL2 block is conditional (only fires when `/usr/lib/wsl/drivers/` exists) and will not run on Linux.
+
+### Run one job at a time
+
+Both the `normal` and `gpu` partitions share the `local_serial` partition QoS.
+Its accounting limit `GrpJobs=1` allows one running job across the cluster,
+including jobs from different users. Additional jobs stay queued and start in
+order of the scheduler's priorities as the running job finishes.
+
+After starting a new cluster, run `./register_cluster.sh` to register the cluster
+and create or update this QoS. The command is safe to repeat and then restarts
+Slurm's controller and accounting service; run it when existing jobs can be
+interrupted. The limit persists in the Slurm accounting database.
